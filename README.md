@@ -195,7 +195,8 @@ Open `gaussians.ply` in SuperSplat next to the gsplat splat of the same scene, f
 ## Findings
 
 * InfiniSplat v3's unit tests pass on Windows, with a CPU build of torch on a laptop, apart from two that are out of date upstream on every OS: `tests\test_inference.py` imports `validation`, the old name of `inference.py`, and one test reads `prepare_data.md` from the v3 folder, which now sits in `docs`. With `validation` pointing at `inference.py`, 44 of 45 tests pass
-* Nothing run on the lab PC yet
+* On the lab PC two more tests failed, because the user name is longer than 8 characters. `%TEMP%` then holds the Windows short name (`C:\Users\102789~1\...`), `inference.py` expands it to the long one, and the tests compare the two spellings of the same folder. With temp folders at their long path, the result matches the laptop
+* Nothing run on the lab PC yet beyond the setup
 
 
 
@@ -205,7 +206,7 @@ Open `gaussians.ply` in SuperSplat next to the gsplat splat of the same scene, f
 * torch 2.9.1 cu128 from the PyTorch index, because the docs ask for "a CUDA build compatible with your NVIDIA driver" and the RTX 5070 needs CUDA 12.8
 * The repo is cloned with `core.longpaths=true`, because some of its paths are too long for Windows' default limit
 * Weights are downloaded with `curl` from Hugging Face file URLs at a pinned revision and checked against the hashes Hugging Face lists, because the docs only link the Hugging Face page
-* The unit tests run with `validation` pointing at `inference.py`, and `test_documented_camera_json_matches_loader` may fail, because both are out of date upstream (see Findings)
+* The unit tests run with `validation` pointing at `inference.py`, and `test_documented_camera_json_matches_loader` may fail, because both are out of date upstream (see Findings). Temp folders for the tests use their long path, so a short Windows user folder name does not fail two of them
 * `--resolution` matches each scene's aspect ratio at about the pixel count of the default 756x756, because the default crops every image to a square
 * View subsets, because all views go through the network at once and the 12 GB GPU holds about 3 GB besides the weights
 * `run_scene.py` calls InfiniSplat's own `inference.main` and records time and peak GPU memory. InfiniSplat's code is unchanged

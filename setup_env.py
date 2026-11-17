@@ -24,7 +24,8 @@ Deviations, each forced by this PC or by the lab setup:
   git clone core.longpaths   Windows path length limit, pinned to one commit
   weights by curl        from pinned Hugging Face URLs, resumable, with sha256 checks
   unit tests             run with `validation` pointing at inference.py, one stale test allowed
-                         to fail (both are out of date upstream, see KNOWN_UPSTREAM_TEST_FAILURES)
+                         to fail (both are out of date upstream, see KNOWN_UPSTREAM_TEST_FAILURES),
+                         and temp folders at their long path, not the Windows short name
 """
 
 import hashlib
@@ -93,9 +94,13 @@ WEIGHTS = [
 #   test_documented_camera_json_matches_loader reads prepare_data.md from the v3 root, it is in docs/
 # So the tests run in one interpreter with `validation` pointing at inference.py, and the
 # second test is the only failure allowed.
+# Temp folders get their long path first: with a user name over 8 characters, %TEMP% holds the
+# Windows short name (C:\Users\102789~1\...), inference.py expands it with resolve(), and two
+# tests that compare the two spellings of the same folder would fail.
 KNOWN_UPSTREAM_TEST_FAILURES = {"test_documented_camera_json_matches_loader"}
 UNIT_TEST_CODE = (
-    "import sys, unittest\n"
+    "import os, sys, tempfile, unittest\n"
+    "tempfile.tempdir = os.path.realpath(tempfile.gettempdir())\n"
     "sys.path[:0] = ['.', 'tests']\n"
     "import inference\n"
     "sys.modules['validation'] = inference\n"
