@@ -1,0 +1,5 @@
+# Made by setup.bat and run_scene.bat on the lab PC, never committed
+InfiniSplat/
+scenes/
+outputs/
+__pycache__/
