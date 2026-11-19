@@ -11,6 +11,7 @@ a GPU log to outputs/logs.
 
 import csv
 import datetime
+import functools
 import json
 import os
 import re
@@ -103,6 +104,11 @@ VIEWS_ALL = "all"
 
 # Fraction of the card PyTorch may allocate. See set_memory_guard
 GPU_MEMORY_FRACTION = 0.90
+
+# Images each decoder turns into full resolution output at once in offload mode. InfiniSplat
+# uses 8, which at 756x756 in FP32 takes about 4.7 GB in the depth head alone. Each image is
+# decoded on its own, so 1 gives the same output with an eighth of that memory
+OFFLOAD_DECODE_FRAMES = 1
 
 # Seconds between nvidia-smi samples in the GPU log, and how long to wait for it to stop
 GPU_LOG_INTERVAL_S = 2
@@ -513,11 +519,12 @@ def run_offload(argv):
     Inference with one model on the GPU at a time.
 
     Mirrors inference.main at InfiniSplat commit f2140ec (lines 122 to 179) step by step and
-    changes only where the two models live. With both resident, the weights alone take about
-    8.9 GB of the 12 GB card (3.8 GB Gaussian model, 5.1 GB WorldMirror 2.0). Here both models
-    are built and loaded on the CPU, the geometry model (teacher) goes to the GPU for its
-    forward pass and back, then the Gaussian model goes to the GPU. The views and the
-    geometry stay on the GPU.
+    changes two things. First, where the two models live: with both resident, the weights
+    alone take about 8.9 GB of the 12 GB card (3.8 GB Gaussian model, 5.1 GB WorldMirror 2.0).
+    Here both models are built and loaded on the CPU, the geometry model (teacher) goes to the
+    GPU for its forward pass and back, then the Gaussian model goes to the GPU. The views and
+    the geometry stay on the GPU. Second, both decoders turn OFFLOAD_DECODE_FRAMES images into
+    full resolution output at a time instead of 8, through the settings their own code takes.
 
     Args:
         argv: command line for inference.parse_args, without --device
@@ -548,8 +555,12 @@ def run_offload(argv):
     # Both models are built and loaded on the CPU, then moved to the GPU one at a time
     model = GaussianWorldMirror(**OmegaConf.to_container(cfg.wrapper.model),
                                 enable_cond=bool(cfg.wrapper.enable_cond),
-                                filter_sky_infer=args.sky_seg)
+                                filter_sky_infer=args.sky_seg,
+                                decode_chunk_size=OFFLOAD_DECODE_FRAMES)
     teacher = GeometryWorldMirror(enable_cond=bool(cfg.wrapper.enable_cond))
+    # GeometryWorldMirror.forward calls its depth head with the default of 8 images at a time
+    teacher.depth_head.forward = functools.partial(
+        teacher.depth_head.forward, frames_chunk_size=OFFLOAD_DECODE_FRAMES)
     load_model_weights(model, cfg.wrapper.SplatAnything_pretrained)
     load_model_weights(teacher, cfg.wrapper.worldmirror2_pretrained)
     model.eval().requires_grad_(False)

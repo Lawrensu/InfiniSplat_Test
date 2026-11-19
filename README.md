@@ -95,7 +95,7 @@ Every run has these guards:
 
 Two options lower memory use:
 
-* `offload`: only one model sits on the GPU at a time. WorldMirror 2.0 runs first and goes back to RAM, then the Gaussian model runs. This frees at least 3.8 GB for the views. The output files are the same as the official path, checked byte for byte with the stand-in models of InfiniSplat's own tests
+* `offload`: only one model sits on the GPU at a time. WorldMirror 2.0 runs first and goes back to RAM, then the Gaussian model runs. This frees at least 3.8 GB for the views. Both models also turn their results into full resolution output 1 image at a time instead of 8, which at 756x756 in FP32 saves about 4 GB in the depth step alone. Each image is decoded on its own, so the output is the same up to float rounding (largest difference 3e-6, checked with InfiniSplat's own decoder classes)
 * `cpu`: runs everything on the CPU with InfiniSplat's own `--device cpu`, in system RAM. InfiniSplat calls this a slow smoke run, so expect minutes or more, but the GPU is not used at all
 
 
@@ -103,7 +103,7 @@ Two options lower memory use:
 
 * If a run stops with out of memory, try fewer views, then `offload`, then `cpu`
 * An out of memory error stops only the run. If the PC still restarts, check the GPU log and see the crash steps in `gsplat-experiment`'s README
-* `offload` reproduces the official `inference.main` step by step, changing only where the two models are kept. It mirrors commit f2140ec, and `run_scene.py` warns if the clone is at another commit
+* `offload` reproduces the official `inference.main` step by step, changing only where the two models are kept and how many images the decoders take at once, both through settings InfiniSplat's own code accepts. It mirrors commit f2140ec, and `run_scene.py` warns if the clone is at another commit
 
 
 
@@ -164,7 +164,7 @@ run_scene.bat stump rgb 32 offload sky
 
 ### Notes
 
-* Start with `offload`. Once the memory use at a view count is known from `runs.csv`, the official path (no option) can be tried at counts that left room
+* Use `offload`. The official path (no option) keeps both models on the GPU and decodes 8 images at a time, which needs more than this card has even for the bundled example
 * `rgb` against `pose` on stump shows whether InfiniSplat's own camera estimate holds up against the official poses
 * Amorphophallus is where InfiniSplat could differ most from RealityScan and gsplat, since it does not need the frames to align strictly before it starts
 
@@ -196,7 +196,7 @@ Open `gaussians.ply` in SuperSplat next to the gsplat splat of the same scene, f
 
 * InfiniSplat v3's unit tests pass on Windows, with a CPU build of torch on a laptop, apart from two that are out of date upstream on every OS: `tests\test_inference.py` imports `validation`, the old name of `inference.py`, and one test reads `prepare_data.md` from the v3 folder, which now sits in `docs`. With `validation` pointing at `inference.py`, 44 of 45 tests pass
 * On the lab PC two more tests failed, because the user name is longer than 8 characters. `%TEMP%` then holds the Windows short name (`C:\Users\102789~1\...`), `inference.py` expands it to the long one, and the tests compare the two spellings of the same folder. With temp folders at their long path, the result matches the laptop
-* Nothing run on the lab PC yet beyond the setup
+* The first lab PC runs with `offload` ran out of memory while the decoders took 8 images at a time: `object` at 23 views (peak 9.84 GiB) and stump at 16 views (peak 10.57 GiB), against the 10.7 GiB cap. The decoders now take 1 image at a time
 
 
 
@@ -211,5 +211,5 @@ Open `gaussians.ply` in SuperSplat next to the gsplat splat of the same scene, f
 * View subsets, because all views go through the network at once and the 12 GB GPU holds about 3 GB besides the weights
 * `run_scene.py` calls InfiniSplat's own `inference.main` and records time and peak GPU memory. InfiniSplat's code is unchanged
 * PyTorch is capped at 90% of GPU memory and the GPU is logged during each run, so an out of memory case stops cleanly instead of spilling into system RAM
-* `offload` reproduces `inference.main` with only one model on the GPU at a time, because both together take about 8.9 GB of the 12 GB
+* `offload` reproduces `inference.main` with only one model on the GPU at a time, because both together take about 8.9 GB of the 12 GB, and decodes 1 image at a time instead of 8 (`decode_chunk_size` of the Gaussian model, `frames_chunk_size` of the depth head), because 8 at full resolution ran out of memory on the lab PC
 * Stump pose mode uses the full size `images`, because the official COLMAP cameras are calibrated at full size and the converter rejects resized images
